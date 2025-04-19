@@ -1,7 +1,7 @@
 use actix_web::{cookie::{self, Cookie, CookieBuilder}, post, web, HttpRequest, HttpResponse, Responder};
 use serde_json::json;
 
-use crate::{app_state::{AppState, DbDummy}, auth, models::{auth::AuthUser, user::{UnverifiedUser, VerifiedUser}}};
+use crate::{app_state::{AppState, DbDummy}, auth, models::{auth::AuthUser, user::{UnverifiedUser}}};
 
 use super::TODO;
 
@@ -10,43 +10,38 @@ use super::TODO;
 async fn login_user(
     db: web::Data<DbDummy>,
     app_state: web::Data<AppState>,
-    data: web::Json<AuthUser>
+    mut data: web::Json<AuthUser>
 ) -> impl Responder{
 
-    //get the salt of user
-
-        
-
-    let auth_user = match data.get_hash_pass(){
-        Ok(hash) => {
-            println!("Hash: {}", hash);
-            AuthUser { username: data.username.clone(), password: hash}
-        },
-        Err(_) => return HttpResponse::InternalServerError().json(json!({
-            "error": "Theres a problem in setting up claim!"
-        })),
+    //get the salt of user   
+    let Some(salt) =  db.find_user_salt(&data) else {
+        return HttpResponse::NotFound().json(json!({
+            "error": "User not found!"
+        }));
     };
 
-    match db.find_user(auth_user){
+    data.hashify_password(salt.as_str());
+
+    match db.find_user(data.0){
         Ok(v) => {
 
-            let token = match auth::create_claims(v.username, &app_state.header){
-                Ok(e) => e,
-                Err(e) => return HttpResponse::InternalServerError().json(json!({
+            let Ok(token) = auth::create_claims(v.username, &app_state.header) else {
+                return HttpResponse::InternalServerError().json(json!({
                     "error": "Theres a problem in setting up claim!"
-                })),
+                }));
             };
 
 
-            let cookie = Cookie::build("auth-token", token)
-                .http_only(true)
-                .secure(false)
-                .same_site(cookie::SameSite::Strict)
-                .path("/")
-                .finish();
+            // let cookie = Cookie::build("auth-token", token)
+            //     .http_only(true)
+            //     .secure(false)
+            //     .same_site(cookie::SameSite::Strict)
+            //     .path("/")
+            //     .finish();
 
             HttpResponse::Ok()
-                .cookie(cookie)
+                // .cookie(cookie)
+                .insert_header(("Authorization", format!("Bearer {}", token)))
                 .json(json!({
                     "accept": "Sent token!"
                 }))
@@ -75,7 +70,7 @@ async fn verify_user(
 ) -> impl Responder {
     if let Some(cookie) = req.cookie("auth_token"){
         let token = cookie.value();
-
+        
         // verify_jwt(token, validation)
         HttpResponse::Ok().body("Token Found, not verified yet")
     } else {
@@ -86,18 +81,30 @@ async fn verify_user(
 #[post("/hash-pass")]
 pub async fn get_hash_password(
     db: web::Data<DbDummy>,
-    data: web::Json<AuthUser>
+    mut data: web::Json<AuthUser>
 ) -> impl Responder {
-    match data.get_hash_pass() {
-        Ok(hash_output) => {
-            HttpResponse::Ok().body(format!("Hashed password {}", hex::encode(hash_output)))
-        },
+    
 
-        Err(e) => {
-            println!("{:?}", e);
-            HttpResponse::NotFound().body("User not found")
-        },
+    //get the salt of user   
+    let Some(salt) =  db.find_user_salt(&data) else {
+        return HttpResponse::NotFound().json(json!({
+            "error": "User not found!"
+        }));
+    };
+
+    if data.hashify_password(salt.as_str()).is_err(){
+        return HttpResponse::InternalServerError().json(json!({
+            "error": "Failed to hash function!"
+        }));
     }
 
-    
+    let hash_pass = data.password.clone();
+    HttpResponse::Ok().json(json!({
+        "hash_pass": hash_pass
+    }))
+
 }
+
+
+
+

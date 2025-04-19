@@ -39,6 +39,13 @@ impl DbDummy{
         lock.push(user);
     }
 
+    pub fn find_user_salt(&self, user: &AuthUser) -> Option<String> {
+        let lock = self.0.lock().expect("Poisoned!");
+        lock.iter()
+            .find(|v| v.email == user.username || v.username == user.username)
+            .and_then(|v| v.salt.clone())
+    }
+
     pub fn is_available(&self, user: &UnverifiedUser) -> bool {
         let lock = self.0.lock().expect("Poisoned!");
         lock.iter().find(|&v| v.email == user.email).is_none()

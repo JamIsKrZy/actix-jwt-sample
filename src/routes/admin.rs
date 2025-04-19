@@ -12,9 +12,9 @@ pub async fn new_user(
     appdata: web::Data<DbDummy>
 ) -> impl Responder{
     
-    if user.salt.is_some() {return HttpResponse::BadRequest().body("Found salt!")}
+    if user.salt.is_some() {return HttpResponse::BadRequest().body(format!("Found salt! {:?}", user.salt ))}
 
-    if appdata.verified_user_available(&user.0) {
+    if !appdata.verified_user_available(&user.0) {
         return HttpResponse::BadRequest().body("Found salt!")
     }
     
@@ -27,7 +27,7 @@ pub async fn new_user(
         email: user.email.clone(),
         username: user.username.clone(),
         password: hash_pass,
-        salt: Some()
+        salt: Some(salt)
     };
 
     appdata.insert_user(user);

@@ -3,6 +3,8 @@ use serde_json::json;
 
 mod auth;
 mod admin;
+mod operation;
+
 
 struct TODO;
 
@@ -29,7 +31,7 @@ pub fn config(cfg: &mut ServiceConfig){
 
     )
     .service(
-        web::scope("/info")
+        web::scope("/operation")
             .default_service(web::to(|| async {TODO}))
     )
     .service(
